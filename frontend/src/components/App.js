@@ -3,31 +3,27 @@ import { Route, useHistory, Switch } from "react-router-dom";
 import Header from "./Header";
 import Main from "./Main";
 import Footer from "./Footer";
-import PopupWithForm from "./PopupWithForm";
-import ImagePopup from "./ImagePopup";
 import api from "../utils/api";
-import { CurrentUserContext } from "../contexts/CurrentUserContext";
-import EditProfilePopup from "./EditProfilePopup";
-import EditAvatarPopup from "./EditAvatarPopup";
-import AddPlacePopup from "./AddPlacePopup";
-import Register from "./Register";
-import Login from "./Login";
+import { CurrentUserContextProvider } from "shared";
 import InfoTooltip from "./InfoTooltip";
 import ProtectedRoute from "./ProtectedRoute";
 import * as auth from "../utils/auth.js";
+import { eventEmitter, PopupWithForm } from "shared";
 
+const Login = React.lazy(() =>
+    import("auth/Login").catch(() => <>Сервис не доступен!</>)
+);
+const Register = React.lazy(() =>
+    import("auth/Register").catch(() => <>Сервис не доступен!</>)
+);
 function App() {
-  const [isEditProfilePopupOpen, setIsEditProfilePopupOpen] =
-    React.useState(false);
-  const [isAddPlacePopupOpen, setIsAddPlacePopupOpen] = React.useState(false);
-  const [isEditAvatarPopupOpen, setIsEditAvatarPopupOpen] =
-    React.useState(false);
-  const [selectedCard, setSelectedCard] = React.useState(null);
-  const [cards, setCards] = React.useState([]);
 
-  // В корневом компоненте App создана стейт-переменная currentUser. Она используется в качестве значения для провайдера контекста.
-  const [currentUser, setCurrentUser] = React.useState({});
-
+  React.useEffect(() => {
+    eventEmitter.subscribe('Authorized', (e) => onLogin(e));
+    eventEmitter.subscribe('AuthorizedFailed', (e) => onLoginFailed(e));
+    eventEmitter.subscribe('Registered', (e) => onRegister(e));
+    eventEmitter.subscribe('RegisterFailed', (e) => onRegisterFailed(e));
+  });
   const [isInfoToolTipOpen, setIsInfoToolTipOpen] = React.useState(false);
   const [tooltipStatus, setTooltipStatus] = React.useState("");
 
@@ -36,18 +32,6 @@ function App() {
   const [email, setEmail] = React.useState("");
 
   const history = useHistory();
-
-  // Запрос к API за информацией о пользователе и массиве карточек выполняется единожды, при монтировании.
-  React.useEffect(() => {
-    api
-      .getAppInfo()
-      .then(([cardData, userData]) => {
-        setCurrentUser(userData);
-        setCards(cardData);
-      })
-      .catch((err) => console.log(err));
-  }, []);
-
   // при монтировании App описан эффект, проверяющий наличие токена и его валидности
   React.useEffect(() => {
     const token = localStorage.getItem("jwt");
@@ -66,107 +50,26 @@ function App() {
     }
   }, [history]);
 
-  function handleEditProfileClick() {
-    setIsEditProfilePopupOpen(true);
+  function onRegister(e) {
+    setTooltipStatus("success");
+    setIsInfoToolTipOpen(true);
+    history.push("/signin");
   }
 
-  function handleAddPlaceClick() {
-    setIsAddPlacePopupOpen(true);
+  function onRegisterFailed(ev){
+    setTooltipStatus("fail");
+    setIsInfoToolTipOpen(true);
   }
 
-  function handleEditAvatarClick() {
-    setIsEditAvatarPopupOpen(true);
+  function onLogin(e) {
+    setEmail(e.Email)
+    setIsLoggedIn(true);
+    history.push("/");
   }
 
-  function closeAllPopups() {
-    setIsEditProfilePopupOpen(false);
-    setIsAddPlacePopupOpen(false);
-    setIsEditAvatarPopupOpen(false);
-    setIsInfoToolTipOpen(false);
-    setSelectedCard(null);
-  }
-
-  function handleCardClick(card) {
-    setSelectedCard(card);
-  }
-
-  function handleUpdateUser(userUpdate) {
-    api
-      .setUserInfo(userUpdate)
-      .then((newUserData) => {
-        setCurrentUser(newUserData);
-        closeAllPopups();
-      })
-      .catch((err) => console.log(err));
-  }
-
-  function handleUpdateAvatar(avatarUpdate) {
-    api
-      .setUserAvatar(avatarUpdate)
-      .then((newUserData) => {
-        setCurrentUser(newUserData);
-        closeAllPopups();
-      })
-      .catch((err) => console.log(err));
-  }
-
-  function handleCardLike(card) {
-    const isLiked = card.likes.some((i) => i._id === currentUser._id);
-    api
-      .changeLikeCardStatus(card._id, !isLiked)
-      .then((newCard) => {
-        setCards((cards) =>
-          cards.map((c) => (c._id === card._id ? newCard : c))
-        );
-      })
-      .catch((err) => console.log(err));
-  }
-
-  function handleCardDelete(card) {
-    api
-      .removeCard(card._id)
-      .then(() => {
-        setCards((cards) => cards.filter((c) => c._id !== card._id));
-      })
-      .catch((err) => console.log(err));
-  }
-
-  function handleAddPlaceSubmit(newCard) {
-    api
-      .addCard(newCard)
-      .then((newCardFull) => {
-        setCards([newCardFull, ...cards]);
-        closeAllPopups();
-      })
-      .catch((err) => console.log(err));
-  }
-
-  function onRegister({ email, password }) {
-    auth
-      .register(email, password)
-      .then((res) => {
-        setTooltipStatus("success");
-        setIsInfoToolTipOpen(true);
-        history.push("/signin");
-      })
-      .catch((err) => {
-        setTooltipStatus("fail");
-        setIsInfoToolTipOpen(true);
-      });
-  }
-
-  function onLogin({ email, password }) {
-    auth
-      .login(email, password)
-      .then((res) => {
-        setIsLoggedIn(true);
-        setEmail(email);
-        history.push("/");
-      })
-      .catch((err) => {
-        setTooltipStatus("fail");
-        setIsInfoToolTipOpen(true);
-      });
+  function onLoginFailed(e) {
+    setTooltipStatus("fail");
+    setIsInfoToolTipOpen(true);
   }
 
   function onSignOut() {
@@ -179,57 +82,42 @@ function App() {
 
   return (
     // В компонент App внедрён контекст через CurrentUserContext.Provider
-    <CurrentUserContext.Provider value={currentUser}>
+    <CurrentUserContextProvider>
       <div className="page__content">
         <Header email={email} onSignOut={onSignOut} />
+        <React.Suspense fallback={"Loading"}>
         <Switch>
           {/*Роут / защищён HOC-компонентом ProtectedRoute*/}
           <ProtectedRoute
             exact
             path="/"
             component={Main}
-            cards={cards}
-            onEditProfile={handleEditProfileClick}
-            onAddPlace={handleAddPlaceClick}
-            onEditAvatar={handleEditAvatarClick}
-            onCardClick={handleCardClick}
-            onCardLike={handleCardLike}
-            onCardDelete={handleCardDelete}
             loggedIn={isLoggedIn}
           />
           {/*Роут /signup и /signin не является защищёнными, т.е оборачивать их в HOC ProtectedRoute не нужно.*/}
-          <Route path="/signup">
-            <Register onRegister={onRegister} />
+          {/*<AuthApp />*/}
+          {/*<Route path="/signup">
+            <Register />
           </Route>
           <Route path="/signin">
             <Login onLogin={onLogin} />
+          </Route>*/}
+          <Route path="/signup">
+            <Register onRegister={onRegister}  onRegisterFailed={onRegisterFailed} onEnterClick={() => history.push("/signin")} />
+          </Route>
+          <Route path="/signin">
+            <Login onLogin={onLogin} onLoginFailed={onLoginFailed} />
           </Route>
         </Switch>
         <Footer />
-        <EditProfilePopup
-          isOpen={isEditProfilePopupOpen}
-          onUpdateUser={handleUpdateUser}
-          onClose={closeAllPopups}
-        />
-        <AddPlacePopup
-          isOpen={isAddPlacePopupOpen}
-          onAddPlace={handleAddPlaceSubmit}
-          onClose={closeAllPopups}
-        />
         <PopupWithForm title="Вы уверены?" name="remove-card" buttonText="Да" />
-        <EditAvatarPopup
-          isOpen={isEditAvatarPopupOpen}
-          onUpdateAvatar={handleUpdateAvatar}
-          onClose={closeAllPopups}
-        />
-        <ImagePopup card={selectedCard} onClose={closeAllPopups} />
+        </React.Suspense>
         <InfoTooltip
           isOpen={isInfoToolTipOpen}
-          onClose={closeAllPopups}
-          status={tooltipStatus}
-        />
+          onClose={() => setIsInfoToolTipOpen(false)}
+          status={tooltipStatus} />
       </div>
-    </CurrentUserContext.Provider>
+    </CurrentUserContextProvider>
   );
 }
 
