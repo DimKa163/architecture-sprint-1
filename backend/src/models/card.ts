@@ -40,4 +40,4 @@ const cardsSchema = new mongoose.Schema<ICard>({
   },
 }, { versionKey: false });
 
-export default mongoose.model<ICard>('card-content', cardsSchema);
+export default mongoose.model<ICard>('card', cardsSchema);
